@@ -8,26 +8,26 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 210 25% 98%;
-    --foreground: 215 25% 15%;
+    --background: 222 47% 5%;
+    --foreground: 210 40% 98%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 215 25% 15%;
+    --card: 222 47% 8%;
+    --card-foreground: 210 40% 98%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 215 25% 15%;
+    --popover: 222 47% 8%;
+    --popover-foreground: 210 40% 98%;
 
-    --primary: 217 91% 35%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 5%;
 
-    --secondary: 210 20% 93%;
-    --secondary-foreground: 215 25% 15%;
+    --secondary: 217 32% 15%;
+    --secondary-foreground: 210 40% 98%;
 
-    --muted: 210 20% 95%;
-    --muted-foreground: 215 15% 45%;
+    --muted: 217 32% 12%;
+    --muted-foreground: 215 20% 65%;
 
     --accent: 43 96% 56%;
-    --accent-foreground: 215 25% 15%;
+    --accent-foreground: 222 47% 5%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
@@ -36,18 +36,21 @@ All colors MUST be HSL.
     --success-foreground: 0 0% 100%;
 
     --warning: 38 92% 50%;
-    --warning-foreground: 215 25% 15%;
+    --warning-foreground: 222 47% 5%;
 
-    --border: 215 20% 88%;
-    --input: 215 20% 88%;
-    --ring: 217 91% 35%;
+    --border: 217 32% 18%;
+    --input: 217 32% 18%;
+    --ring: 217 91% 60%;
 
-    --radius: 0.75rem;
+    --radius: 1rem;
     
-    --gradient-primary: linear-gradient(135deg, hsl(217 91% 35%), hsl(217 91% 45%));
+    --gradient-primary: linear-gradient(135deg, hsl(217 91% 50%), hsl(217 91% 70%));
     --gradient-risk: linear-gradient(90deg, hsl(142 71% 45%), hsl(43 96% 56%), hsl(0 72% 51%));
-    --shadow-soft: 0 2px 20px -4px hsl(217 91% 35% / 0.1);
-    --shadow-glow: 0 0 40px hsl(217 91% 35% / 0.15);
+    --gradient-dark: linear-gradient(180deg, hsl(222 47% 5%), hsl(222 47% 8%));
+    --shadow-soft: 0 8px 32px -8px hsl(217 91% 60% / 0.2);
+    --shadow-glow: 0 0 80px hsl(217 91% 60% / 0.3);
+    --glass-bg: hsl(222 47% 12% / 0.4);
+    --glass-border: hsl(217 91% 60% / 0.2);
 
     --sidebar-background: 0 0% 98%;
 
