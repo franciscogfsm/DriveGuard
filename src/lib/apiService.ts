@@ -110,14 +110,28 @@ export async function fetchTrafficData(
 
     const flow = response.data.flowSegmentData;
 
-    return {
-      flowSpeed: flow.currentSpeed,
+    console.log("✓ Traffic data fetched from TomTom:", {
+      currentSpeed: flow.currentSpeed,
       freeFlowSpeed: flow.freeFlowSpeed,
-      congestionLevel: Math.max(0, 1 - flow.currentSpeed / flow.freeFlowSpeed),
+      currentTravelTime: flow.currentTravelTime,
+      freeFlowTravelTime: flow.freeFlowTravelTime,
+    });
+
+    // Calculate congestion more accurately
+    const congestion =
+      flow.freeFlowSpeed > 0
+        ? Math.max(0, Math.min(1, 1 - flow.currentSpeed / flow.freeFlowSpeed))
+        : 0;
+
+    return {
+      flowSpeed: Math.round(flow.currentSpeed),
+      freeFlowSpeed: Math.round(flow.freeFlowSpeed),
+      congestionLevel: congestion,
       incidents: 0, // We'll fetch this separately
     };
   } catch (error) {
     console.error("Error fetching traffic data:", error);
+    console.error("Error details:", error.response?.data || error.message);
     // Return mock data if API fails
     return getMockTrafficData();
   }
@@ -138,12 +152,15 @@ export async function fetchTrafficIncidents(
   }
 
   try {
+    const bbox = `${minLon},${minLat},${maxLon},${maxLat}`;
+    console.log("Fetching incidents for bbox:", bbox);
+
     const response = await axios.get(
       API_CONFIG.tomtom.endpoints.trafficIncidents,
       {
         params: {
           key: API_CONFIG.tomtom.apiKey,
-          bbox: `${minLon},${minLat},${maxLon},${maxLat}`,
+          bbox: bbox,
           fields:
             "{incidents{type,geometry{type,coordinates},properties{iconCategory}}}",
           language: "en-GB",
@@ -151,9 +168,13 @@ export async function fetchTrafficIncidents(
       }
     );
 
-    return response.data.incidents?.length || 0;
+    const incidentCount = response.data.incidents?.length || 0;
+    console.log(`✓ Found ${incidentCount} traffic incidents in area`);
+
+    return incidentCount;
   } catch (error) {
     console.error("Error fetching traffic incidents:", error);
+    console.error("Error details:", error.response?.data || error.message);
     return 0;
   }
 }

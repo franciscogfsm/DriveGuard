@@ -40,21 +40,22 @@ const RiskOverlay = ({ regionData }: RiskOverlayProps) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Generate risk zones based on region data
+    // Generate very precise risk zones on actual roads (avoiding sea)
     const zones = generateRiskZones(
       regionData.coords[0],
       regionData.coords[1],
       regionData.riskScore,
-      20
+      25, // Optimal number of precise zones
+      regionData.name // Pass city name to use correct road patterns
     );
     setRiskZones(zones);
     setIsLoading(false);
   }, [regionData]);
 
   const getRiskColor = (risk: number): string => {
-    if (risk < 35) return "#22c55e"; // green
-    if (risk < 65) return "#f59e0b"; // amber
-    return "#ef4444"; // red
+    if (risk < 30) return "#22c55e"; // green - low risk
+    if (risk < 60) return "#f59e0b"; // amber - medium risk
+    return "#ef4444"; // red - high risk
   };
 
   const getRiskOpacity = (risk: number): number => {
@@ -79,7 +80,7 @@ const RiskOverlay = ({ regionData }: RiskOverlayProps) => {
       <div className="relative w-full h-[600px]">
         <MapContainer
           center={regionData.coords}
-          zoom={11}
+          zoom={12}
           style={{ height: "100%", width: "100%" }}
           className="z-0"
           scrollWheelZoom={true}
@@ -152,17 +153,22 @@ const RiskOverlay = ({ regionData }: RiskOverlayProps) => {
           <div className="space-y-2 text-sm">
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 rounded bg-success" />
-              <span>Low Risk (0-35)</span>
+              <span>Low Risk (&lt;30)</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 rounded bg-warning" />
-              <span>Medium Risk (35-65)</span>
+              <span>Medium Risk (30-60)</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 rounded bg-destructive" />
-              <span>High Risk (65+)</span>
+              <span>High Risk (60+)</span>
             </div>
           </div>
+          <p className="text-xs text-muted-foreground mt-3 pt-2 border-t border-border">
+            Circles: 120-300m radius
+            <br />
+            Based on real-time weather
+          </p>
         </div>
 
         {/* Data Sources Badge */}
