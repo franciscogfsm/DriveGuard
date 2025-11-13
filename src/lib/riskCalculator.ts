@@ -1,4 +1,6 @@
 // Risk calculation engine for DriveGuard
+import { calculateMLRiskAdjustment } from "./accidentHistory";
+
 export interface WeatherData {
   temp: number;
   humidity: number;
@@ -21,6 +23,7 @@ export interface RiskFactors {
   traffic: number;
   timeOfDay: number;
   historical: number;
+  mlAdjustment?: number; // ML-based risk boost from accident patterns
 }
 
 export interface RiskResult {
@@ -421,50 +424,144 @@ const MAJOR_ROAD_OFFSETS: Record<string, Array<[number, number]>> = {
 };
 
 /**
- * Generate precise risk zones on actual roads, avoiding water/sea
+ * Check if two zones overlap
+ */
+function zonesOverlap(
+  lat1: number,
+  lng1: number,
+  radius1: number,
+  lat2: number,
+  lng2: number,
+  radius2: number
+): boolean {
+  // Convert degrees to approximate meters (rough approximation)
+  const latDiff = (lat2 - lat1) * 111000; // 1 degree lat ≈ 111km
+  const lngDiff = (lng2 - lng1) * 111000 * Math.cos((lat1 * Math.PI) / 180);
+  const distance = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff);
+
+  // Zones overlap if distance between centers < sum of radii
+  return distance < (radius1 + radius2) * 0.8; // 0.8 factor allows slight overlap
+}
+
+/**
+ * Generate precise risk zones on actual roads, avoiding water/sea and overlaps
  * Creates small, precise circles only where roads exist
+ * Each zone has risk calculated based on its specific location conditions
  */
 export function generateRiskZones(
   centerLat: number,
   centerLng: number,
   baseRisk: number,
   count: number = 20,
-  cityName: string = "default"
+  cityName: string = "default",
+  weather?: any,
+  traffic?: any
 ): Array<{ lat: number; lng: number; radius: number; risk: number }> {
   const zones = [];
   const roadOffsets =
     MAJOR_ROAD_OFFSETS[cityName.toLowerCase()] || MAJOR_ROAD_OFFSETS.default;
 
-  // Use predefined road locations and add minimal variation
-  for (let i = 0; i < count; i++) {
-    // Pick a road offset, cycling through available roads
-    const roadOffset = roadOffsets[i % roadOffsets.length];
+  let attempts = 0;
+  const maxAttempts = count * 5; // Try up to 5x to avoid overlaps
 
-    // Add very small random variation to create precise clusters (±0.002 degrees ≈ ±220m)
+  while (zones.length < count && attempts < maxAttempts) {
+    attempts++;
+
+    // Pick a road offset, cycling through available roads
+    const roadOffset = roadOffsets[zones.length % roadOffsets.length];
+
+    // Add small random variation to create precise clusters (±0.002 degrees ≈ ±220m)
     const latVariation = (Math.random() - 0.5) * 0.004;
     const lngVariation = (Math.random() - 0.5) * 0.004;
 
     const zoneLat = centerLat + roadOffset[0] + latVariation;
     const zoneLng = centerLng + roadOffset[1] + lngVariation;
 
-    // Risk variation based on local conditions
-    // High-risk areas get higher values, low-risk areas stay lower
-    const riskVariation = (Math.random() - 0.5) * 30; // ±15 variation
-    const zoneRisk = Math.max(15, Math.min(90, baseRisk + riskVariation));
+    // Calculate distance from center to determine area characteristics
+    const distanceFromCenter = Math.sqrt(
+      Math.pow(roadOffset[0], 2) + Math.pow(roadOffset[1], 2)
+    );
 
-    // Size varies slightly based on risk level
-    // Higher risk = slightly larger visibility, but still small
-    const baseRadius = 120; // Reduced from 150m
-    const riskSizeBonus = (zoneRisk / 100) * 100; // 0-100m bonus for high risk
-    const randomVariation = Math.random() * 80; // 0-80m random
+    // Zone-specific risk calculation based on location and conditions
+    let zoneRisk = baseRisk;
 
-    zones.push({
-      lat: zoneLat,
-      lng: zoneLng,
-      radius: baseRadius + riskSizeBonus + randomVariation, // 120m-300m for precise zones
-      risk: zoneRisk,
-    });
+    // Areas farther from center tend to have different risk profiles
+    if (distanceFromCenter > 0.02) {
+      // Highways/outer areas - higher speeds, different risks
+      zoneRisk += 5;
+    }
+
+    // Add weather-based risk variation
+    if (weather) {
+      // Low-lying areas (near water) have higher fog risk
+      if (roadOffset[0] < 0 && weather.visibility < 3000) {
+        zoneRisk += 8;
+      }
+      // Elevated areas more affected by wind
+      if (roadOffset[0] > 0.015 && weather.windSpeed > 35) {
+        zoneRisk += 6;
+      }
+    }
+
+    // Add traffic-based risk variation
+    if (traffic) {
+      // City center has higher traffic risk
+      if (distanceFromCenter < 0.01 && traffic.congestionLevel > 0.5) {
+        zoneRisk += 10;
+      }
+    }
+
+    // Add realistic random variation
+    const riskVariation = (Math.random() - 0.5) * 25; // ±12.5 variation
+    zoneRisk = Math.max(15, Math.min(95, zoneRisk + riskVariation));
+
+    // Apply ML-based risk adjustment from accident history
+    const mlAdjustment = calculateMLRiskAdjustment(
+      zoneLat,
+      zoneLng,
+      weather,
+      traffic,
+      new Date().getHours()
+    );
+    zoneRisk = Math.min(100, zoneRisk + mlAdjustment); // Cap at 100
+
+    // Size varies based on risk level - higher risk = slightly more visible
+    const baseRadius = 130;
+    const riskSizeBonus = (zoneRisk / 100) * 90; // 0-90m bonus
+    const randomVariation = Math.random() * 60; // 0-60m random
+    const radius = baseRadius + riskSizeBonus + randomVariation; // 130-280m
+
+    // Check for overlaps with existing zones
+    let overlaps = false;
+    for (const existingZone of zones) {
+      if (
+        zonesOverlap(
+          zoneLat,
+          zoneLng,
+          radius,
+          existingZone.lat,
+          existingZone.lng,
+          existingZone.radius
+        )
+      ) {
+        overlaps = true;
+        break;
+      }
+    }
+
+    // Only add if no overlap
+    if (!overlaps) {
+      zones.push({
+        lat: zoneLat,
+        lng: zoneLng,
+        radius: radius,
+        risk: zoneRisk,
+      });
+    }
   }
 
+  console.log(
+    `Generated ${zones.length} non-overlapping zones (${attempts} attempts)`
+  );
   return zones;
 }

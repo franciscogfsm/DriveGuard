@@ -137,8 +137,16 @@ export async function fetchTrafficData(
   }
 }
 
+export interface IncidentData {
+  lat: number;
+  lng: number;
+  type: string;
+  severity: number; // 1-5
+  category: string;
+}
+
 /**
- * Fetch traffic incidents from TomTom API
+ * Fetch traffic incidents with detailed locations from TomTom API
  */
 export async function fetchTrafficIncidents(
   minLat: number,
@@ -146,14 +154,32 @@ export async function fetchTrafficIncidents(
   maxLat: number,
   maxLon: number
 ): Promise<number> {
+  const incidents = await fetchDetailedIncidents(
+    minLat,
+    minLon,
+    maxLat,
+    maxLon
+  );
+  return incidents.length;
+}
+
+/**
+ * Fetch detailed traffic incidents with coordinates from TomTom API
+ */
+export async function fetchDetailedIncidents(
+  minLat: number,
+  minLon: number,
+  maxLat: number,
+  maxLon: number
+): Promise<IncidentData[]> {
   // Use mock data if enabled
   if (MOCK_DATA_ENABLED) {
-    return Math.floor(Math.random() * 3); // 0-2 incidents
+    return [];
   }
 
   try {
     const bbox = `${minLon},${minLat},${maxLon},${maxLat}`;
-    console.log("Fetching incidents for bbox:", bbox);
+    console.log("Fetching detailed incidents for bbox:", bbox);
 
     const response = await axios.get(
       API_CONFIG.tomtom.endpoints.trafficIncidents,
@@ -162,25 +188,57 @@ export async function fetchTrafficIncidents(
           key: API_CONFIG.tomtom.apiKey,
           bbox: bbox,
           fields:
-            "{incidents{type,geometry{type,coordinates},properties{iconCategory}}}",
+            "{incidents{type,geometry{type,coordinates},properties{iconCategory,magnitudeOfDelay,delay}}}",
           language: "en-GB",
         },
       }
     );
 
-    const incidentCount = response.data.incidents?.length || 0;
-    console.log(`✓ Found ${incidentCount} traffic incidents in area`);
+    const incidents: IncidentData[] = [];
 
-    return incidentCount;
+    if (response.data.incidents && Array.isArray(response.data.incidents)) {
+      response.data.incidents.forEach((incident: any) => {
+        if (incident.geometry && incident.geometry.coordinates) {
+          const coords = incident.geometry.coordinates;
+
+          // Handle both Point and LineString geometries
+          if (incident.geometry.type === "Point") {
+            incidents.push({
+              lng: coords[0],
+              lat: coords[1],
+              type: incident.properties?.iconCategory || "ACCIDENT",
+              severity: incident.properties?.magnitudeOfDelay || 3,
+              category: incident.properties?.iconCategory || "unknown",
+            });
+          } else if (
+            incident.geometry.type === "LineString" &&
+            coords.length > 0
+          ) {
+            // Use the middle point of the line
+            const midIndex = Math.floor(coords.length / 2);
+            incidents.push({
+              lng: coords[midIndex][0],
+              lat: coords[midIndex][1],
+              type: incident.properties?.iconCategory || "ACCIDENT",
+              severity: incident.properties?.magnitudeOfDelay || 3,
+              category: incident.properties?.iconCategory || "unknown",
+            });
+          }
+        }
+      });
+    }
+
+    console.log(`✓ Found ${incidents.length} detailed incidents:`, incidents);
+    return incidents;
   } catch (error) {
-    console.error("Error fetching traffic incidents:", error);
+    console.error("Error fetching detailed incidents:", error);
     console.error("Error details:", error.response?.data || error.message);
-    return 0;
+    return [];
   }
 }
 
 /**
- * Fetch combined data for a location
+ * Fetch combined data for a location with detailed incidents
  */
 export async function fetchLocationRiskData(lat: number, lon: number) {
   const [weather, traffic] = await Promise.all([
@@ -188,18 +246,55 @@ export async function fetchLocationRiskData(lat: number, lon: number) {
     fetchTrafficData(lat, lon),
   ]);
 
-  // Fetch incidents for a small bounding box around the location
+  // Fetch incidents for a bounding box around the location
   const offset = 0.05; // ~5km
-  const incidents = await fetchTrafficIncidents(
+  const detailedIncidents = await fetchDetailedIncidents(
     lat - offset,
     lon - offset,
     lat + offset,
     lon + offset
   );
 
-  traffic.incidents = incidents;
+  traffic.incidents = detailedIncidents.length;
 
-  return { weather, traffic };
+  return { weather, traffic, incidents: detailedIncidents };
+}
+
+/**
+ * Fetch zone-specific traffic data for precise risk calculation
+ */
+export async function fetchZoneTrafficData(
+  lat: number,
+  lon: number
+): Promise<TrafficData | null> {
+  if (MOCK_DATA_ENABLED) return null;
+
+  try {
+    const response = await axios.get(
+      `${API_CONFIG.tomtom.endpoints.trafficFlow}/absolute/10/json`,
+      {
+        params: {
+          key: API_CONFIG.tomtom.apiKey,
+          point: `${lat},${lon}`,
+        },
+      }
+    );
+
+    const flow = response.data.flowSegmentData;
+    const congestion =
+      flow.freeFlowSpeed > 0
+        ? Math.max(0, Math.min(1, 1 - flow.currentSpeed / flow.freeFlowSpeed))
+        : 0;
+
+    return {
+      flowSpeed: Math.round(flow.currentSpeed),
+      freeFlowSpeed: Math.round(flow.freeFlowSpeed),
+      congestionLevel: congestion,
+      incidents: 0,
+    };
+  } catch (error) {
+    return null;
+  }
 }
 
 /**

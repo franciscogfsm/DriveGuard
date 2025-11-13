@@ -23,6 +23,11 @@ import {
   type TrafficData,
   type RiskResult,
 } from "@/lib/riskCalculator";
+import {
+  recordAccident,
+  updateAccidentHotspots,
+  getLearningStats,
+} from "@/lib/accidentHistory";
 
 interface RegionData {
   name: string;
@@ -34,6 +39,7 @@ interface RegionData {
   weather?: WeatherData;
   traffic?: TrafficData;
   riskAnalysis?: RiskResult;
+  incidents?: any[]; // Real accident locations
 }
 
 const REGION_DATA: Record<string, RegionData> = {
@@ -144,6 +150,7 @@ const RiskMap = () => {
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [previousIncidents, setPreviousIncidents] = useState<number>(0);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
+  const [learningStats, setLearningStats] = useState(getLearningStats());
 
   const loadRegionData = async (showToast = true, isAutoRefresh = false) => {
     if (!regionId || !REGION_DATA[regionId]) {
@@ -158,7 +165,7 @@ const RiskMap = () => {
 
     try {
       const baseData = REGION_DATA[regionId];
-      const { weather, traffic } = await fetchLocationRiskData(
+      const { weather, traffic, incidents } = await fetchLocationRiskData(
         baseData.coords[0],
         baseData.coords[1]
       );
@@ -184,10 +191,22 @@ const RiskMap = () => {
         weather,
         traffic,
         riskAnalysis,
+        incidents, // Add real incident locations
       };
 
       setRegionData(enhancedData);
       setLastUpdate(new Date());
+
+      // Record new accidents for ML learning
+      if (incidents && incidents.length > 0) {
+        incidents.forEach((incident) => {
+          recordAccident(incident, weather, traffic);
+        });
+        // Update hotspots after recording new accidents
+        updateAccidentHotspots();
+        // Refresh learning statistics
+        setLearningStats(getLearningStats());
+      }
 
       // Check for new accidents/incidents
       if (previousIncidents > 0 && traffic.incidents > previousIncidents) {
@@ -195,7 +214,7 @@ const RiskMap = () => {
         toast.error(
           `⚠️ NEW ACCIDENT ALERT: ${newIncidents} new incident(s) detected!`,
           {
-            description: `Total incidents in area: ${traffic.incidents}. Drive with extreme caution.`,
+            description: `Total incidents in area: ${traffic.incidents}. Drive with extreme caution. System learning from this accident.`,
             duration: 10000, // 10 seconds
           }
         );
@@ -612,6 +631,52 @@ const RiskMap = () => {
               </ul>
             </div>
           )}
+
+        {/* Machine Learning Statistics */}
+        <div className="mt-8 p-6 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 border-2 border-primary/20">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-lg flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-primary" />
+              Machine Learning System
+            </h3>
+            <div className="flex items-center gap-2 text-xs text-primary">
+              <span className="animate-pulse">●</span>
+              <span className="font-medium">{learningStats.dataQuality}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div className="bg-card/50 rounded-lg p-3 border border-border/50">
+              <p className="text-muted-foreground mb-1">Accidents Tracked</p>
+              <p className="text-2xl font-bold text-primary">
+                {learningStats.totalAccidents}
+              </p>
+            </div>
+            <div className="bg-card/50 rounded-lg p-3 border border-border/50">
+              <p className="text-muted-foreground mb-1">Hotspots Found</p>
+              <p className="text-2xl font-bold text-warning">
+                {learningStats.hotspotsIdentified}
+              </p>
+            </div>
+            <div className="bg-card/50 rounded-lg p-3 border border-border/50">
+              <p className="text-muted-foreground mb-1">Last 7 Days</p>
+              <p className="text-2xl font-bold text-blue-500">
+                {learningStats.last7Days}
+              </p>
+            </div>
+            <div className="bg-card/50 rounded-lg p-3 border border-border/50">
+              <p className="text-muted-foreground mb-1">Accuracy</p>
+              <p className="text-2xl font-bold text-success">
+                {learningStats.predictionAccuracy}%
+              </p>
+            </div>
+          </div>
+
+          <p className="text-xs text-muted-foreground mt-4 text-center">
+            The system learns from real accidents to improve risk predictions
+            over time
+          </p>
+        </div>
 
         {/* Risk Factors Breakdown */}
         {regionData.riskAnalysis && (
