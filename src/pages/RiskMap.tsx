@@ -141,15 +141,20 @@ const RiskMap = () => {
   const [regionData, setRegionData] = useState<RegionData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [previousIncidents, setPreviousIncidents] = useState<number>(0);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
 
-  const loadRegionData = async (showToast = true) => {
+  const loadRegionData = async (showToast = true, isAutoRefresh = false) => {
     if (!regionId || !REGION_DATA[regionId]) {
       toast.error("Region not found");
       navigate("/selector");
       return;
     }
 
-    setIsLoading(true);
+    if (!isAutoRefresh) {
+      setIsLoading(true);
+    }
 
     try {
       const baseData = REGION_DATA[regionId];
@@ -182,8 +187,39 @@ const RiskMap = () => {
       };
 
       setRegionData(enhancedData);
+      setLastUpdate(new Date());
 
-      if (showToast) {
+      // Check for new accidents/incidents
+      if (previousIncidents > 0 && traffic.incidents > previousIncidents) {
+        const newIncidents = traffic.incidents - previousIncidents;
+        toast.error(
+          `⚠️ NEW ACCIDENT ALERT: ${newIncidents} new incident(s) detected!`,
+          {
+            description: `Total incidents in area: ${traffic.incidents}. Drive with extreme caution.`,
+            duration: 10000, // 10 seconds
+          }
+        );
+      }
+
+      // High risk weather warning
+      if (riskAnalysis.factors.weather > 70 && isAutoRefresh) {
+        toast.warning("⚠️ SEVERE WEATHER WARNING", {
+          description: `${weather.condition} detected - Risk score: ${riskAnalysis.factors.weather}/100`,
+          duration: 8000,
+        });
+      }
+
+      // Critical overall risk warning
+      if (riskAnalysis.score >= 75 && isAutoRefresh) {
+        toast.error("🚨 CRITICAL RISK LEVEL", {
+          description: `Overall risk: ${riskAnalysis.score}/100 - Avoid travel if possible`,
+          duration: 10000,
+        });
+      }
+
+      setPreviousIncidents(traffic.incidents);
+
+      if (showToast && !isAutoRefresh) {
         toast.success(`Risk analysis loaded for ${baseData.name}`, {
           description: `Risk Level: ${riskAnalysis.level.toUpperCase()} (${
             riskAnalysis.score
@@ -194,21 +230,47 @@ const RiskMap = () => {
       console.error("Error loading region data:", error);
       // Fallback to base data if API fails
       setRegionData(REGION_DATA[regionId]);
-      toast.warning("Using cached data - API temporarily unavailable");
+      if (!isAutoRefresh) {
+        toast.warning("Using cached data - API temporarily unavailable");
+      }
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
   };
 
+  // Initial load
   useEffect(() => {
     loadRegionData();
   }, [regionId, navigate]);
 
+  // Auto-refresh every 60 seconds (1 minute)
+  useEffect(() => {
+    if (!autoRefreshEnabled) return;
+
+    const intervalId = setInterval(() => {
+      console.log("🔄 Auto-refreshing data...");
+      loadRegionData(false, true); // Silent auto-refresh
+    }, 60000); // 60 seconds = 1 minute
+
+    return () => clearInterval(intervalId);
+  }, [regionId, autoRefreshEnabled, previousIncidents]);
+
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await loadRegionData(false);
-    toast.success("Data refreshed");
+    await loadRegionData(false, false);
+    toast.success("Data refreshed manually", {
+      description: `Updated at ${new Date().toLocaleTimeString()}`,
+    });
+  };
+
+  const toggleAutoRefresh = () => {
+    setAutoRefreshEnabled(!autoRefreshEnabled);
+    toast.info(
+      !autoRefreshEnabled
+        ? "🔄 Auto-refresh enabled (every 60 seconds)"
+        : "⏸️ Auto-refresh paused"
+    );
   };
 
   const getRiskColor = (level: string) => {
@@ -263,7 +325,26 @@ const RiskMap = () => {
                 DriveGuard
               </h1>
             </button>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
+              {lastUpdate && (
+                <div className="text-xs text-muted-foreground hidden md:flex items-center gap-1">
+                  <span className="animate-pulse text-primary">●</span>
+                  Updated: {lastUpdate.toLocaleTimeString()}
+                </div>
+              )}
+              <Button
+                variant={autoRefreshEnabled ? "default" : "outline"}
+                onClick={toggleAutoRefresh}
+                size="sm"
+                className="gap-2"
+              >
+                <RefreshCw
+                  className={`h-3 w-3 ${
+                    autoRefreshEnabled ? "animate-spin" : ""
+                  }`}
+                />
+                {autoRefreshEnabled ? "Auto" : "Manual"}
+              </Button>
               <Button
                 variant="outline"
                 onClick={handleRefresh}
@@ -331,34 +412,62 @@ const RiskMap = () => {
             <p className="text-2xl font-bold">{regionData.riskScore}/100</p>
           </div>
 
-          <div className="p-6 rounded-xl border-2 border-border bg-card">
-            <div className="flex items-center gap-3 mb-2">
-              <CloudRain className="h-5 w-5 text-primary" />
-              <span className="text-sm font-medium text-muted-foreground">
-                Weather
-              </span>
+          <div
+            className={`p-6 rounded-xl border-2 ${
+              regionData.riskAnalysis &&
+              regionData.riskAnalysis.factors.weather > 70
+                ? "border-destructive/30 bg-destructive/5"
+                : "border-border bg-card"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-3">
+                <CloudRain className="h-5 w-5 text-primary" />
+                <span className="text-sm font-medium text-muted-foreground">
+                  Weather
+                </span>
+              </div>
+              {regionData.weather && regionData.weather.precipitation > 2 && (
+                <span className="text-xs bg-warning/20 text-warning px-2 py-1 rounded-full font-bold">
+                  Rain: {regionData.weather.precipitation.toFixed(1)}mm
+                </span>
+              )}
             </div>
             <p className="text-lg font-semibold">
               {regionData.weatherCondition}
             </p>
             {regionData.weather && (
               <p className="text-xs text-muted-foreground mt-1">
-                {regionData.weather.temp.toFixed(1)}°C
+                {regionData.weather.temp.toFixed(1)}°C •{" "}
+                {regionData.weather.windSpeed.toFixed(0)} km/h wind
               </p>
             )}
           </div>
 
-          <div className="p-6 rounded-xl border-2 border-border bg-card">
-            <div className="flex items-center gap-3 mb-2">
-              <Car className="h-5 w-5 text-primary" />
-              <span className="text-sm font-medium text-muted-foreground">
-                Traffic
-              </span>
+          <div
+            className={`p-6 rounded-xl border-2 ${
+              regionData.traffic && regionData.traffic.incidents > 0
+                ? "border-destructive/30 bg-destructive/5"
+                : "border-border bg-card"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-3">
+                <Car className="h-5 w-5 text-primary" />
+                <span className="text-sm font-medium text-muted-foreground">
+                  Traffic
+                </span>
+              </div>
+              {regionData.traffic && regionData.traffic.incidents > 0 && (
+                <span className="text-xs bg-destructive/20 text-destructive px-2 py-1 rounded-full font-bold animate-pulse">
+                  {regionData.traffic.incidents} incidents
+                </span>
+              )}
             </div>
             <p className="text-lg font-semibold">{regionData.trafficDensity}</p>
             {regionData.traffic && (
               <p className="text-xs text-muted-foreground mt-1">
-                {regionData.traffic.flowSpeed.toFixed(0)} km/h
+                {regionData.traffic.flowSpeed.toFixed(0)} km/h current speed
               </p>
             )}
           </div>
@@ -370,7 +479,7 @@ const RiskMap = () => {
             <div className="p-6 rounded-xl border-2 border-border bg-card">
               <h3 className="font-semibold text-lg mb-4 flex items-center gap-2">
                 <CloudRain className="h-5 w-5 text-primary" />
-                Weather Details
+                Weather Details (Live)
               </h3>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
@@ -381,6 +490,9 @@ const RiskMap = () => {
                   <p className="font-semibold">
                     {regionData.weather.temp.toFixed(1)}°C
                   </p>
+                  {regionData.weather.temp < 2 && (
+                    <p className="text-xs text-destructive mt-1">⚠️ Ice risk</p>
+                  )}
                 </div>
                 <div>
                   <div className="flex items-center gap-2 text-muted-foreground mb-1">
@@ -399,6 +511,9 @@ const RiskMap = () => {
                   <p className="font-semibold">
                     {regionData.weather.windSpeed.toFixed(1)} km/h
                   </p>
+                  {regionData.weather.windSpeed > 45 && (
+                    <p className="text-xs text-warning mt-1">⚠️ Strong winds</p>
+                  )}
                 </div>
                 <div>
                   <div className="flex items-center gap-2 text-muted-foreground mb-1">
@@ -408,6 +523,33 @@ const RiskMap = () => {
                   <p className="font-semibold">
                     {(regionData.weather.visibility / 1000).toFixed(1)} km
                   </p>
+                  {regionData.weather.visibility < 2000 && (
+                    <p className="text-xs text-warning mt-1">
+                      ⚠️ Low visibility
+                    </p>
+                  )}
+                </div>
+                <div className="col-span-2">
+                  <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                    <CloudRain className="h-4 w-4" />
+                    <span>Precipitation</span>
+                  </div>
+                  <p className="font-semibold">
+                    {regionData.weather.precipitation > 0
+                      ? `${regionData.weather.precipitation.toFixed(1)} mm/h`
+                      : "None"}
+                  </p>
+                  {regionData.weather.precipitation > 5 && (
+                    <p className="text-xs text-destructive mt-1">
+                      ⚠️ Heavy rain - High accident risk
+                    </p>
+                  )}
+                  {regionData.weather.precipitation > 2 &&
+                    regionData.weather.precipitation <= 5 && (
+                      <p className="text-xs text-warning mt-1">
+                        ⚠️ Moderate rain - Drive carefully
+                      </p>
+                    )}
                 </div>
               </div>
             </div>
@@ -511,24 +653,79 @@ const RiskMap = () => {
           </div>
         )}
 
+        {/* Real-time Update Status */}
+        <div className="mt-8 p-6 rounded-xl bg-gradient-to-r from-primary/10 to-accent/10 border border-primary/30">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-lg flex items-center gap-2">
+              <span className="animate-pulse text-primary">●</span>
+              Real-Time Monitoring Active
+            </h3>
+            {autoRefreshEnabled && (
+              <span className="text-xs bg-primary/20 text-primary px-3 py-1 rounded-full font-medium">
+                Updates every 60s
+              </span>
+            )}
+          </div>
+          <p className="text-muted-foreground leading-relaxed text-sm">
+            The system continuously monitors weather conditions, traffic flow,
+            and accident reports. You'll receive <strong>instant alerts</strong>{" "}
+            when:
+            <br />• <strong className="text-destructive">
+              New accidents
+            </strong>{" "}
+            are detected in the area
+            <br />• <strong className="text-warning">
+              Severe weather
+            </strong>{" "}
+            conditions develop (risk &gt;70%)
+            <br />•{" "}
+            <strong className="text-destructive">
+              Critical risk levels
+            </strong>{" "}
+            are reached (score ≥75)
+            <br />
+            {lastUpdate && (
+              <span className="text-xs mt-2 block">
+                Last updated: {lastUpdate.toLocaleString()} | Next update:{" "}
+                {autoRefreshEnabled ? "in 60 seconds" : "manual"}
+              </span>
+            )}
+          </p>
+        </div>
+
         {/* Info Banner */}
-        <div className="mt-8 p-6 rounded-xl bg-muted/50 border border-border">
+        <div className="mt-4 p-6 rounded-xl bg-muted/50 border border-border">
           <h3 className="font-semibold text-lg mb-2 flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-primary" />
             About Risk Analysis
           </h3>
-          <p className="text-muted-foreground leading-relaxed">
-            Risk predictions are generated using real-time data from TomTom
-            Traffic API and OpenWeatherMap. The algorithm combines weather
-            conditions, traffic flow, time of day, and historical patterns to
-            calculate risk scores. The color-coded map shows relative accident
-            risk levels across different areas.
-            <span className="text-success font-medium"> Green</span> indicates
-            low risk (0-35),
-            <span className="text-warning font-medium"> amber</span> shows
-            medium risk (35-65), and
-            <span className="text-destructive font-medium"> red</span>{" "}
-            represents high-risk zones (65+).
+          <p className="text-muted-foreground leading-relaxed text-sm">
+            Risk predictions use <strong>real-time data</strong> from TomTom
+            Traffic API and Open-Meteo weather service. The AI algorithm
+            combines:
+            <br />• <strong>Weather conditions</strong> (40% weight):
+            precipitation, visibility, wind, temperature
+            <br />• <strong>Traffic congestion</strong> (30% weight): flow
+            speed, stop-and-go patterns, incidents
+            <br />• <strong>Time factors</strong> (20% weight): rush hour, night
+            driving risks
+            <br />• <strong>Historical data</strong> (10% weight): known
+            accident patterns
+            <br />
+            <br />
+            <span className="text-success font-medium">
+              Green zones (&lt;30)
+            </span>{" "}
+            = low risk,{" "}
+            <span className="text-warning font-medium">
+              amber zones (30-60)
+            </span>{" "}
+            = medium risk,{" "}
+            <span className="text-destructive font-medium">
+              red zones (60+)
+            </span>{" "}
+            = high risk. Circle sizes (120-300m) indicate precision zones on
+            actual roads.
           </p>
         </div>
       </div>
