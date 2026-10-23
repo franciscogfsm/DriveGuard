@@ -1,73 +1,50 @@
-# Welcome to your Lovable project
+<div align="center">
 
-## Project info
+# DriveGuard
 
-**URL**: https://lovable.dev/projects/71445c8a-a3a4-4e13-a6bd-596fd6a349a9
+Road risk, predicted from live traffic, incidents and weather.
 
-## How can I edit this code?
+<img src="https://img.shields.io/badge/React-61DAFB?style=flat&logo=react&logoColor=black" alt="React">
+<img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white" alt="TypeScript">
+<img src="https://img.shields.io/badge/Vite-646CFF?style=flat&logo=vite&logoColor=white" alt="Vite">
+<img src="https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=flat&logo=tailwindcss&logoColor=white" alt="Tailwind CSS">
+<img src="https://img.shields.io/badge/shadcn%2Fui-000000?style=flat&logo=shadcnui&logoColor=white" alt="shadcn/ui">
+<img src="https://img.shields.io/badge/Leaflet-199900?style=flat&logo=leaflet&logoColor=white" alt="Leaflet">
 
-There are several ways of editing your application.
+<sub>
+<a href="DOCUMENTATION.md">Documentation</a> &nbsp;·&nbsp;
+<a href="QUICKSTART.md">Quick start</a>
+</sub>
 
-**Use Lovable**
+</div>
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/71445c8a-a3a4-4e13-a6bd-596fd6a349a9) and start prompting.
+<br>
 
-Changes made via Lovable will be committed automatically to this repo.
+DriveGuard shows where driving is risky right now. It combines live traffic flow and incidents from
+TomTom with weather into a risk score per zone, draws the zones on an interactive map, and learns
+from the accidents it sees to adjust future predictions.
 
-**Use your preferred IDE**
+## What it does
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+- An interactive Leaflet map with a live TomTom traffic overlay
+- Colour-coded risk zones per region, each with a detail popup
+- Risk scores from traffic speed, congestion, incidents, weather and time of day
+- A learning loop that records each detected accident with its conditions and reweights the risk model
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+## Start
 
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+```bash
+npm install
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+The app needs a TomTom API key, read from `VITE_TOMTOM_API_KEY`.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Documentation
 
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/71445c8a-a3a4-4e13-a6bd-596fd6a349a9) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+| File | What it covers |
+|---|---|
+| [`DOCUMENTATION.md`](DOCUMENTATION.md) | Full technical documentation |
+| [`RISK_FLOW.md`](RISK_FLOW.md) | How a risk score is computed |
+| [`ML_INTEGRATION.md`](ML_INTEGRATION.md) | The accident learning loop |
+| [`REALTIME_IMPROVEMENTS.md`](REALTIME_IMPROVEMENTS.md), [`PRECISION_IMPROVEMENTS.md`](PRECISION_IMPROVEMENTS.md) | Change notes |
